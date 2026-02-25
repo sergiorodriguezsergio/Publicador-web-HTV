@@ -23,6 +23,8 @@ try:
     HAS_WATCHDOG = True
 except ImportError:
     HAS_WATCHDOG = False
+    Observer = None  # type: ignore[assignment]
+    FileSystemEventHandler = object  # type: ignore[assignment]
 
 from core.transcription import TranscriptionService
 from core.writer import WriterService
@@ -71,6 +73,18 @@ def _save_settings(data):
     os.makedirs(CONFIG_DIR, exist_ok=True)
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
+
+def _center_on_parent(win, parent, w, h):
+    """Centra una ventana Toplevel sobre la ventana padre."""
+    parent.update_idletasks()
+    px = parent.winfo_rootx()
+    py = parent.winfo_rooty()
+    pw = parent.winfo_width()
+    ph = parent.winfo_height()
+    x = px + (pw - w) // 2
+    y = py + (ph - h) // 2
+    win.geometry(f"{w}x{h}+{max(0, x)}+{max(0, y)}")
 
 
 # ─── Canvas: rectángulo redondeado ───────────────────────────────
@@ -279,10 +293,10 @@ class SettingsDialog(tk.Toplevel):
     def __init__(self, parent, on_save=None):
         super().__init__(parent)
         self.title("Configuración")
-        self.geometry("900x700")
         self.configure(bg=BG_DARK)
         self.resizable(True, True)
         self.grab_set()
+        _center_on_parent(self, parent, 900, 700)
         self._on_save = on_save
 
         self.settings = _load_settings()
@@ -452,15 +466,17 @@ class SettingsDialog(tk.Toplevel):
 
 # ─── Diálogo de verificación ────────────────────────────────────
 class VerificationDialog(tk.Toplevel):
-    def __init__(self, parent, correcciones, texto_corregido, fuentes, aviso, callback_aplicar):
+    def __init__(self, parent, correcciones, texto_corregido, fuentes, aviso,
+                 callback_aplicar, texto_original=None):
         super().__init__(parent)
         self.title("Verificación periodística")
-        self.geometry("860x720")
         self.configure(bg=BG_DARK)
         self.resizable(True, True)
         self.grab_set()
+        _center_on_parent(self, parent, 860, 720)
 
         self.texto_corregido = texto_corregido
+        self.texto_original = texto_original or {}
         self.callback_aplicar = callback_aplicar
         self.checks = []
 
@@ -520,6 +536,11 @@ class VerificationDialog(tk.Toplevel):
                 tk.Label(body, text=f"💡 {expl}", bg=BG_CARD, fg=FG_SECONDARY,
                          font=(FONT_FAMILY, 8, "italic"), wraplength=720
                          ).pack(anchor=tk.W, pady=(4, 0))
+            fecha_ref = corr.get("fecha_referencia", "")
+            if fecha_ref:
+                tk.Label(body, text=f"📅 Fecha de la fuente: {fecha_ref}", bg=BG_CARD,
+                         fg=ACCENT_GOLD, font=(FONT_FAMILY, 8),
+                         ).pack(anchor=tk.W, pady=(2, 0))
             src = corr.get("fuente", "")
             if src:
                 lbl = tk.Label(body, text=f"🔗 {src}", bg=BG_CARD, fg=ACCENT_CYAN,
@@ -550,19 +571,20 @@ class VerificationDialog(tk.Toplevel):
 
     def _aplicar(self):
         omitidos = [str(c["numero"]) for v, c in self.checks if not v.get()]
+        aplicados = [(v, c) for v, c in self.checks if v.get()]
         if omitidos:
             dlg = tk.Toplevel(self)
             dlg.title("Confirmar")
-            dlg.geometry("420x160")
             dlg.configure(bg=BG_DARK)
             dlg.grab_set()
             dlg.resizable(False, False)
+            _center_on_parent(dlg, self, 440, 180)
             tk.Label(
                 dlg,
-                text=f"Has deseleccionado: {', '.join(omitidos)}.\n"
-                     "Esas partes quedarán como estaban.",
+                text=f"Se omitirán las correcciones: #{', #'.join(omitidos)}.\n"
+                     "Esas partes quedarán como estaban en el borrador.",
                 bg=BG_DARK, fg=FG_PRIMARY, font=(FONT_FAMILY, 10),
-                wraplength=380, justify=tk.CENTER,
+                wraplength=400, justify=tk.CENTER,
             ).pack(pady=24)
             row = tk.Frame(dlg, bg=BG_DARK)
             row.pack()
@@ -585,13 +607,32 @@ class VerificationDialog(tk.Toplevel):
             if not result[0]:
                 return
 
-        self.callback_aplicar(self.texto_corregido)
+        # Si hay correcciones omitidas, aplicar solo las seleccionadas
+        if omitidos and self.texto_original:
+            resultado = {
+                "titulo": self.texto_original.get("titulo", ""),
+                "entradilla": self.texto_original.get("entradilla", ""),
+                "contenido": self.texto_original.get("contenido", ""),
+                "etiquetas": list(self.texto_original.get("etiquetas", [])),
+            }
+            for _, corr in aplicados:
+                orig = corr.get("original", "")
+                fixed = corr.get("corregido", "")
+                if not orig or not fixed:
+                    continue
+                for campo in ["titulo", "entradilla", "contenido"]:
+                    if orig in resultado[campo]:
+                        resultado[campo] = resultado[campo].replace(orig, fixed, 1)
+                        break
+            self.callback_aplicar(resultado)
+        else:
+            self.callback_aplicar(self.texto_corregido)
         self.destroy()
 
 
 # ─── MP3 file handler (watchdog) ────────────────────────────────
 if HAS_WATCHDOG:
-    class Mp3Handler(FileSystemEventHandler):
+    class Mp3Handler(FileSystemEventHandler):  # type: ignore[misc, valid-type]
         def __init__(self, callback):
             super().__init__()
             self._callback = callback
@@ -600,8 +641,10 @@ if HAS_WATCHDOG:
         def on_created(self, event):
             if event.is_directory:
                 return
-            if event.src_path.lower().endswith(".mp3"):
-                path = event.src_path
+            raw = event.src_path
+            src: str = raw if isinstance(raw, str) else raw.decode("utf-8", errors="replace")  # type: ignore[union-attr]
+            if src.lower().endswith(".mp3"):
+                path = src
                 if path in self._processed:
                     return
                 self._processed.add(path)
@@ -1051,8 +1094,8 @@ class PublicadorApp(tk.Tk):
             self.toggle_watcher.set(False)
             return
 
-        handler = Mp3Handler(lambda path: self.after(0, self._on_mp3_detected, path))
-        self._observer = Observer()
+        handler = Mp3Handler(lambda path: self.after(0, self._on_mp3_detected, path))  # type: ignore[name-defined]
+        self._observer = Observer()  # type: ignore[name-defined]
         self._observer.schedule(handler, folder, recursive=False)
         self._observer.start()
         self._watcher_active = True
@@ -1150,7 +1193,7 @@ class PublicadorApp(tk.Tk):
 
             self.after(0, lambda: self.lbl_proc_detail.config(
                 text="Redactando noticia con IA…"))
-            nombre_base, _ = os.path.splitext(self.original_filename)
+            nombre_base, _ = os.path.splitext(self.original_filename or "")
             video_filename = f"{nombre_base}.mp4"
             noticia = self.writer_svr.write_news(texto, video_filename)
 
@@ -1234,9 +1277,18 @@ class PublicadorApp(tk.Tk):
                 self.after(600, self._publicar)
             return
 
+        texto_original = {
+            "titulo": self.txt_titulo.text.get("1.0", tk.END).strip(),
+            "entradilla": self.txt_entradilla.text.get("1.0", tk.END).strip(),
+            "contenido": self._html_contenido,
+            "etiquetas": [t.strip() for t in
+                          self.txt_etiquetas.text.get("1.0", tk.END).split(",")
+                          if t.strip()],
+        }
         VerificationDialog(
             self, correcciones, texto_corregido, fuentes, aviso,
             lambda tc: self._aplicar_correcciones(tc, auto_publish),
+            texto_original=texto_original,
         )
         self._set_status("Revisando correcciones…", ACCENT_PURPLE)
 

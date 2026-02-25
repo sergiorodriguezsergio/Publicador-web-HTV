@@ -53,8 +53,17 @@ class VerificationService:
         msg = response.choices[0].message
         if hasattr(msg, "annotations") and msg.annotations:
             for ann in msg.annotations:
-                if hasattr(ann, "url"):
-                    annotations.append(ann.url)
+                # SDK moderno: url_citation.url
+                url_citation = getattr(ann, "url_citation", None)
+                if url_citation is not None:
+                    url = getattr(url_citation, "url", None)
+                    if url:
+                        annotations.append(url)
+                else:
+                    # Fallback para versiones antiguas del SDK
+                    url = getattr(ann, "url", None)
+                    if url:
+                        annotations.append(url)
 
         start = raw_text.find("{")
         end = raw_text.rfind("}") + 1
