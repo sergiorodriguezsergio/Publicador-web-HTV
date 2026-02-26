@@ -1,11 +1,20 @@
 import os
+import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
 from urllib.parse import quote
+from core.logger import get_logger
 
 load_dotenv()
+
+log = get_logger(__name__)
+
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+_MAX_RETRIES  = 3
+_BASE_DELAY   = 2
 
 class PublisherService:
     def __init__(self):
@@ -20,19 +29,42 @@ class PublisherService:
             "09": "SEPTIEMBRE", "10": "OCTUBRE", "11": "NOVIEMBRE", "12": "DICIEMBRE"
         }
 
+    def _fetch_tag_id(self, tag: str):
+        """Resuelve el ID de una etiqueta. Devuelve None si no existe."""
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                res = requests.get(
+                    f"{self.site_url}/tags",
+                    params={"search": tag, "per_page": 1},
+                    auth=self.auth,
+                    timeout=10,
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    return data[0]["id"] if data else None
+                if res.status_code in _RETRY_STATUS and attempt < _MAX_RETRIES:
+                    time.sleep(_BASE_DELAY * (2 ** (attempt - 1)))
+                    continue
+                log.warning("[Publisher] tag '%s' HTTP %s", tag, res.status_code)
+                return None
+            except Exception as exc:
+                log.warning("[Publisher] tag '%s' error: %s", tag, exc)
+                if attempt < _MAX_RETRIES:
+                    time.sleep(_BASE_DELAY * (2 ** (attempt - 1)))
+        return None
+
     def _get_tag_ids(self, tags_list):
         if not tags_list or not self.auth:
             return []
-            
+
         ids = []
-        for tag in tags_list:
-            try:
-                res = requests.get(f"{self.site_url}/tags?search={tag}", auth=self.auth)
-                if res.status_code == 200:
-                    data = res.json()
-                    if data: ids.append(data[0]['id'])
-            except Exception:
-                pass
+        with ThreadPoolExecutor(max_workers=min(len(tags_list), 5)) as pool:
+            futures = {pool.submit(self._fetch_tag_id, tag): tag for tag in tags_list}
+            for fut in as_completed(futures):
+                tag_id = fut.result()
+                if tag_id is not None:
+                    ids.append(tag_id)
+        log.info("[Publisher] %d/%d etiquetas resueltas", len(ids), len(tags_list))
         return ids
 
     def _generate_video_embed(self, original_filename):
@@ -72,9 +104,33 @@ class PublisherService:
             "tags": tags_ids
         }
 
-        response = requests.post(f"{self.site_url}/posts", auth=self.auth, json=post_data, allow_redirects=False)
-        
-        if response.status_code == 201:
-            return response.json().get('link')
-        else:
-            raise Exception(f"HTTP {response.status_code}: {response.text}")
+        last_exc = None
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                log.info("[Publisher] Publicando post - intento %d/%d", attempt, _MAX_RETRIES)
+                response = requests.post(
+                    f"{self.site_url}/posts",
+                    auth=self.auth,
+                    json=post_data,
+                    allow_redirects=False,
+                    timeout=30,
+                )
+                if response.status_code == 201:
+                    link = response.json().get("link")
+                    log.info("[Publisher] Post creado: %s", link)
+                    return link
+                if response.status_code in _RETRY_STATUS and attempt < _MAX_RETRIES:
+                    delay = _BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning("[Publisher] HTTP %s, reintentando en %ss...", response.status_code, delay)
+                    time.sleep(delay)
+                    continue
+                raise Exception(f"HTTP {response.status_code}: {response.text}")
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES:
+                    delay = _BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning("[Publisher] Error de red, reintentando en %ss...", delay)
+                    time.sleep(delay)
+                else:
+                    raise
+        raise last_exc

@@ -1,12 +1,20 @@
 import os
 import json
-from openai import OpenAI
+import time
+from openai import OpenAI, APIStatusError, APIConnectionError
 from dotenv import load_dotenv
+from core.logger import get_logger
 
 load_dotenv()
 
+log = get_logger(__name__)
+
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
 PROMPTS_PATH = os.path.join(CONFIG_DIR, "prompts.json")
+
+_RETRY_CODES = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 3
+_BASE_DELAY  = 2  # segundos
 
 
 def _load_prompts():
@@ -39,13 +47,39 @@ class VerificationService:
             etiquetas=", ".join(etiquetas),
         )
 
-        response = self.client.chat.completions.create(
-            model=modelo,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        last_exc = None
+        response = None
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                log.info("[Verification] Intento %d/%d - modelo %s", attempt, _MAX_RETRIES, modelo)
+                response = self.client.chat.completions.create(
+                    model=modelo,
+                    messages=messages,
+                )
+                break
+            except APIStatusError as e:
+                last_exc = e
+                if e.status_code in _RETRY_CODES and attempt < _MAX_RETRIES:
+                    delay = _BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning("[Verification] HTTP %s, reintentando en %ss...", e.status_code, delay)
+                    time.sleep(delay)
+                else:
+                    raise
+            except APIConnectionError as e:
+                last_exc = e
+                if attempt < _MAX_RETRIES:
+                    delay = _BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning("[Verification] Error de conexión, reintentando en %ss...", delay)
+                    time.sleep(delay)
+                else:
+                    raise
+        if response is None:
+            raise last_exc
 
         raw_text = response.choices[0].message.content or ""
 

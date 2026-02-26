@@ -1,0 +1,35 @@
+2026-02-26 07:40:08 [INFO] core.transcription: Transcribiendo con Whisper: C:/Users/Equipo1/Desktop/AUDIO\COLA MEDALLAS UHU.mp3
+2026-02-26 07:40:13 [INFO] core.transcription: Transcripción Whisper completada (559 chars)
+2026-02-26 07:40:13 [INFO] core.writer: [Writer] Intento 1/3 - modelo gpt-4o
+2026-02-26 07:40:16 [INFO] core.writer: [Writer] Noticia generada correctamente.
+2026-02-26 07:40:17 [INFO] core.verification: [Verification] Intento 1/3 - modelo gpt-4o-search-preview
+2026-02-26 07:41:34 [INFO] core.publisher: [Publisher] 0/5 etiquetas resueltas
+2026-02-26 07:41:34 [INFO] core.publisher: [Publisher] Publicando post - intento 1/3
+2026-02-26 07:41:34 [INFO] core.publisher: [Publisher] Post creado: https://huelvatv.com/?p=28115
+2026-02-26 07:45:04 [INFO] core.transcription: Transcribiendo con Whisper: C:/Users/Equipo1/Desktop/AUDIO\COLA DÍA HUMEDALES.mp3
+2026-02-26 07:45:10 [INFO] core.transcription: Transcripción Whisper completada (1198 chars)
+2026-02-26 07:45:10 [INFO] core.writer: [Writer] Intento 1/3 - modelo gpt-4o
+2026-02-26 07:45:15 [INFO] core.writer: [Writer] Noticia generada correctamente.
+2026-02-26 07:45:15 [INFO] core.verification: [Verification] Intento 1/3 - modelo gpt-4o-search-preview
+2026-02-26 07:45:49 [INFO] core.publisher: [Publisher] 2/5 etiquetas resueltas
+2026-02-26 07:45:49 [INFO] core.publisher: [Publisher] Publicando post - intento 1/3
+2026-02-26 07:45:50 [INFO] core.publisher: [Publisher] Post creado: https://huelvatv.com/?p=28116
+2026-02-26 07:45:55 [INFO] core.transcription: Transcribiendo con Whisper: C:/Users/Equipo1/Desktop/AUDIO\VTR PREVIA ÁGULAS RECRE.mp3
+2026-02-26 07:46:02 [INFO] core.transcription: Transcripción Whisper completada (2406 chars)
+2026-02-26 07:46:02 [INFO] core.writer: [Writer] Intento 1/3 - modelo gpt-4o
+2026-02-26 07:46:12 [INFO] core.writer: [Writer] Noticia generada correctamente.
+2026-02-26 07:46:12 [INFO] core.verification: [Verification] Intento 1/3 - modelo gpt-4o-search-preview
+2026-02-26 07:47:11 [INFO] core.publisher: [Publisher] 3/5 etiquetas resueltas
+2026-02-26 07:47:11 [INFO] core.publisher: [Publisher] Publicando post - intento 1/3
+2026-02-26 07:47:12 [INFO] core.publisher: [Publisher] Post creado: https://huelvatv.com/?p=28117
+2026-02-26 07:57:08 [INFO] core.transcription: Transcribiendo con Whisper: C:/Users/Equipo1/Desktop/AUDIO/VTR CERTAMEN SAETAS ok.mp4
+2026-02-26 08:04:26 [INFO] core.transcription: Transcribiendo con Whisper: C:/Users/Equipo1/Desktop/AUDIO/VTR CERTAMEN SAETAS ok.mp4
+2026-02-26 08:04:26 [INFO] core.transcription: Extrayendo audio para Whisper (85.6 MB, ext=.mp4): C:/Users/Equipo1/Desktop/AUDIO/VTR CERTAMEN SAETAS ok.mp4
+2026-02-26 08:04:26 [INFO] core.transcription: Audio extraído: C:\Users\Equipo1\AppData\Local\Temp\tmp95o8_sm0.mp3 (1.1 MB)
+2026-02-26 08:04:33 [INFO] core.transcription: Transcripción Whisper completada (2053 chars)
+2026-02-26 08:04:33 [INFO] core.writer: [Writer] Intento 1/3 - modelo gpt-4o
+2026-02-26 08:04:43 [INFO] core.writer: [Writer] Noticia generada correctamente.
+2026-02-26 08:04:52 [INFO] core.verification: [Verification] Intento 1/3 - modelo gpt-4o-search-preview
+2026-02-26 08:06:06 [INFO] core.publisher: [Publisher] 3/6 etiquetas resueltas
+2026-02-26 08:06:06 [INFO] core.publisher: [Publisher] Publicando post - intento 1/3
+2026-02-26 08:06:07 [INFO] core.publisher: [Publisher] Post creado: https://huelvatv.com/?p=28121

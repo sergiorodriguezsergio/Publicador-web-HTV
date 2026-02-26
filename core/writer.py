@@ -1,12 +1,20 @@
 import os
 import json
-from openai import OpenAI
+import time
+from openai import OpenAI, APIStatusError, APIConnectionError
 from dotenv import load_dotenv
+from core.logger import get_logger
 
 load_dotenv()
 
+log = get_logger(__name__)
+
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
 PROMPTS_PATH = os.path.join(CONFIG_DIR, "prompts.json")
+
+_RETRY_CODES = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 3
+_BASE_DELAY  = 2  # segundos
 
 
 def _load_prompts():
@@ -31,15 +39,38 @@ class WriterService:
             original_filename=original_filename,
         )
 
-        response = self.client.chat.completions.create(
-            model=modelo,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
 
-        noticia_json = json.loads(response.choices[0].message.content)
-        noticia_json["archivo_original"] = original_filename
-        return noticia_json
+        last_exc = None
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                log.info("[Writer] Intento %d/%d - modelo %s", attempt, _MAX_RETRIES, modelo)
+                response = self.client.chat.completions.create(
+                    model=modelo,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                )
+                noticia_json = json.loads(response.choices[0].message.content)
+                noticia_json["archivo_original"] = original_filename
+                log.info("[Writer] Noticia generada correctamente.")
+                return noticia_json
+            except APIStatusError as e:
+                last_exc = e
+                if e.status_code in _RETRY_CODES and attempt < _MAX_RETRIES:
+                    delay = _BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning("[Writer] HTTP %s, reintentando en %ss...", e.status_code, delay)
+                    time.sleep(delay)
+                else:
+                    raise
+            except APIConnectionError as e:
+                last_exc = e
+                if attempt < _MAX_RETRIES:
+                    delay = _BASE_DELAY * (2 ** (attempt - 1))
+                    log.warning("[Writer] Error de conexión, reintentando en %ss...", delay)
+                    time.sleep(delay)
+                else:
+                    raise
+        raise last_exc
