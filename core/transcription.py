@@ -4,8 +4,6 @@ import json
 import shutil
 import subprocess
 import tempfile
-from pydub import AudioSegment
-from vosk import Model, KaldiRecognizer, SetLogLevel
 from dotenv import load_dotenv
 from openai import OpenAI
 from core.logger import get_logger
@@ -24,15 +22,24 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Directorio hermano con herramientas externas (puede no existir)
 _TOOLS_DIR = os.path.join(os.path.dirname(PROJECT_DIR), "Herramientas_Htv")
 
-# ── ffmpeg: buscar en PATH del sistema primero; si no, añadir ruta externa ──
-if not shutil.which("ffmpeg"):
+def _ensure_ffmpeg_in_path():
+    """Garantiza que ffmpeg esté en PATH antes de inicializar pydub."""
+    if shutil.which("ffmpeg"):
+        return
     _candidate = os.path.join(_TOOLS_DIR, "ffmpeg-master-latest-win64-gpl", "bin")
     if os.path.isdir(_candidate):
-        os.environ["PATH"] += os.pathsep + _candidate
+        # Prepend para que pydub encuentre esta ruta al importar.
+        os.environ["PATH"] = _candidate + os.pathsep + os.environ.get("PATH", "")
         log.info("ffmpeg añadido desde ruta externa: %s", _candidate)
     else:
         log.warning("ffmpeg no encontrado en el PATH ni en la ruta externa. "
                     "Las transcripciones de audio pueden fallar.")
+
+
+_ensure_ffmpeg_in_path()
+
+from pydub import AudioSegment
+from vosk import Model, KaldiRecognizer, SetLogLevel
 
 class TranscriptionService:
     def __init__(self):
